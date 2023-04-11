@@ -4,7 +4,22 @@ use serde_json::Value;
 use simplelog::*;
 use std::fs::File;
 // use std::fs::OpenOptions;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
+#[derive(Debug, Serialize, Deserialize)]
+struct CloudflareResponse {
+    errors: Vec<CloudflareError>,
+    messages: Option<Vec<Value>>,
+    result: Option<Vec<HashMap<String, Value>>>,
+    result_info: Option<HashMap<String, i32>>,
+    success: bool,
+}
+#[derive(Debug, Serialize, Deserialize)]
+struct CloudflareError {
+    code: i32,
+    message: String,
+}
 
 fn main() {
     let mut env_file = EnvFile::new(Path::new(".env")).expect("Error: No .env file");
@@ -69,12 +84,12 @@ fn main() {
         match (env_file.get("ZONE_ID"), env_file.get("RECORD_ID")) {
             (Some(result_1), Some(result_2)) => {
                 debug!("From file was valid");
-                (result_1.to_string(), result_2.to_string())
+                (result_1.to_owned(), result_2.to_owned())
             }
             (Some(result_1), None) => {
                 debug!("Left valid from file");
                 (
-                    result_1.to_string(),
+                    result_1.to_owned(),
                     get_record_id_from_cloudflare(
                         result_1,
                         config_file
@@ -114,7 +129,7 @@ fn main() {
     let group_identifier = match env_file.get("GROUP_ID") {
         Some(result) => {
             debug!("From file was valid");
-            result.to_string()
+            result.to_owned()
         }
         None => {
             debug!("None valid");
@@ -193,16 +208,17 @@ fn get_zone_record_ids_from_cloudflare(
     token: &str,
     zone_name: &str,
     record_name: &str,
-) -> Result<(String, String), Box<dyn std::error::Error>> {
+) -> Result<(String, String), reqwest::Error> {
     debug!("Entered get_zone_record_ids_from_cloudflare");
     let response = cloudflare_get(
         token,
         format!("https://api.cloudflare.com/client/v4/zones?name={zone_name}"),
     )?;
-    let zone_id = response["result"][0]["id"].as_str().unwrap();
+    let result = response.result.unwrap();
+    let zone_id = result[0]["id"].as_str().unwrap();
     debug!("get_zone_record_ids_from_cloudflare: Zone id is: {zone_id:#?}");
     Ok((
-        zone_id.to_string(),
+        zone_id.to_owned(),
         get_record_id_from_cloudflare(zone_id, record_name, token)?,
     ))
 }
@@ -211,7 +227,7 @@ fn get_record_id_from_cloudflare(
     zone_id: &str,
     record_name: &str,
     token: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, reqwest::Error> {
     debug!("Entered get_record_id_from_cloudflare");
     let response = cloudflare_get(
         token,
@@ -219,13 +235,16 @@ fn get_record_id_from_cloudflare(
             "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?name={record_name}"
         ),
     )?;
-    Ok(response["result"][0]["id"].as_str().unwrap().to_string())
+    Ok(response.result.unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned())
 }
 
-fn cloudflare_get(token: &str, url: String) -> Result<Value, Box<dyn std::error::Error>> {
+fn cloudflare_get(token: &str, url: String) -> Result<CloudflareResponse, reqwest::Error> {
     debug!("Entered cloudflare_get");
     debug!("cloudflare_get: Url is: {url:#?}");
-    let response = reqwest::blocking::Client::new()
+    let response: CloudflareResponse = reqwest::blocking::Client::new()
         .get(url)
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
@@ -299,24 +318,21 @@ fn get_group_id_from_cloudflare(
     token: &str,
     account_id: &str,
     group_name: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, reqwest::Error> {
     debug!("Entered get_group_id_from_cloudflare");
     let response = cloudflare_get(
         token,
         format!("https://api.cloudflare.com/client/v4/accounts/{account_id}/access/groups"),
     )?;
-    debug!("{:#?}", response["result"]);
-    debug!("{:#?}", response["result"].as_array().unwrap());
-    return Ok(response["result"]
-        .as_array()
-        .unwrap()
-        .clone()
+    let result = response.result.unwrap();
+    debug!("{:#?}", result);
+    Ok(result
         .iter()
-        .filter(|&value| value["name"].as_str().unwrap() == group_name)
-        .collect::<Vec<&Value>>()[0]["id"]
+        .filter(|value| value["name"].as_str().unwrap() == group_name)
+        .collect::<Vec<&HashMap<String, Value>>>()[0]["id"]
         .as_str()
         .unwrap()
-        .to_string());
+        .to_owned())
     // let v = response["result"].as_array().unwrap().clone();
     // let mut result: String = format!("Uninitialized");
     // for i in v {
@@ -328,7 +344,7 @@ fn get_group_id_from_cloudflare(
     // return None;
 }
 
-fn get_ip() -> Result<String, Box<dyn std::error::Error>> {
+fn get_ip() -> Result<String, reqwest::Error> {
     let mut resp = reqwest::blocking::get("https://ipv4.icanhazip.com")?.text()?;
     resp.pop();
     debug!("IP response: {resp:#?}");
