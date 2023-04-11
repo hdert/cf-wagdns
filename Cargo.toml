@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 reqwest = { version = "0.11", features = ["blocking", "json"] }
-log = "0.4"
+log = {version = "0.4", features = ["release_max_level_info"] }
 envfile = "0.2"
 serde_json = "1.0"
 simplelog = "0.12"
