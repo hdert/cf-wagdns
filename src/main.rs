@@ -134,9 +134,31 @@ async fn main() {
     debug!("Group id: {group_identifier}");
 }
 
+#[derive(Debug)]
+enum CloudflareError {
+    ReqwestError(reqwest::Error),
+    Unsuccessful(CloudflareResponseError),
+    EmptyResponse,
+    ParseError,
+}
+
+impl fmt::Display for CloudflareError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str("Error getting data from Cloudflare")
+    }
+}
+
+impl Error for CloudflareError {}
+
+impl From<reqwest::Error> for CloudflareError {
+    fn from(reqwestError: reqwest::Error) -> CloudflareError {
+        CloudflareError::ReqwestError(reqwestError)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareResponse {
-    errors: Vec<CloudflareError>,
+    errors: Vec<CloudflareResponseError>,
     messages: Option<Vec<Value>>,
     result: Option<Vec<HashMap<String, Value>>>,
     result_info: Option<HashMap<String, i32>>,
@@ -144,26 +166,51 @@ struct CloudflareResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CloudflareError {
+struct CloudflareResponseError {
     code: i32,
     message: String,
 }
 
-async fn cloudflare_get(token: &str, url: String) -> Result<CloudflareResponse, reqwest::Error> {
+impl fmt::Display for CloudflareResponseError {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str(&format!(
+            "Cloudflare API call failed with code {} and message:\n{}",
+            self.code, self.message
+        ))
+    }
+}
+
+impl Error for CloudflareResponseError {}
+
+async fn cloudflare_get(
+    token: &str,
+    url: String,
+) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
     debug!("Entered cloudflare_get");
     debug!("cloudflare_get: Url is: {url:#?}");
-    let response: CloudflareResponse = reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get(url)
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .send()
-        .await?
+        .await
+        .into_report()
+        .change_context(CloudflareError::from())?;
+
+    let response: CloudflareResponse = response
         .json()
         .await
-        .unwrap();
+        .into_report()
+        .change_context(CloudflareError::ParseError)?;
     debug!("cloudflare_get: Response is: {:#?}", response);
     // TODO: Check response validity: Zero length errors, non-zero length response
-    Ok(response)
+    Ok(parse_result(response)?)
+}
+
+fn parse_result(
+    response: CloudflareResponse,
+) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
+    Ok(vec![])
 }
 
 async fn get_ip() -> Result<String, reqwest::Error> {
