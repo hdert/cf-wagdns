@@ -2,11 +2,9 @@ use envfile::EnvFile;
 use log::{debug, info, warn, LevelFilter};
 use serde_json::Value;
 use simplelog::*;
-use std::fs::File;
 // use std::fs::OpenOptions;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
+use std::{collections::HashMap, fs::File, path::Path};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareResponse {
