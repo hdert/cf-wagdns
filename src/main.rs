@@ -7,21 +7,6 @@ use simplelog::*;
 use std::{collections::HashMap, error::Error, fmt, fs::File, path::Path};
 // use std::fs::OpenOptions;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct CloudflareResponse {
-    errors: Vec<CloudflareError>,
-    messages: Option<Vec<Value>>,
-    result: Option<Vec<HashMap<String, Value>>>,
-    result_info: Option<HashMap<String, i32>>,
-    success: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct CloudflareError {
-    code: i32,
-    message: String,
-}
-
 #[tokio::main]
 async fn main() {
     let mut env_file = EnvFile::new(Path::new(".env")).expect("Error: No .env file");
@@ -147,6 +132,21 @@ async fn main() {
     };
     debug!("Account id: {account_identifier}");
     debug!("Group id: {group_identifier}");
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CloudflareResponse {
+    errors: Vec<CloudflareError>,
+    messages: Option<Vec<Value>>,
+    result: Option<Vec<HashMap<String, Value>>>,
+    result_info: Option<HashMap<String, i32>>,
+    success: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CloudflareError {
+    code: i32,
+    message: String,
 }
 
 async fn cloudflare_get(token: &str, url: String) -> Result<CloudflareResponse, reqwest::Error> {
