@@ -1,10 +1,11 @@
 use envfile::EnvFile;
+use error_stack::{IntoReport, Report, Result, ResultExt};
 use log::{debug, info, warn, LevelFilter};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simplelog::*;
+use std::{collections::HashMap, error::Error, fmt, fs::File, path::Path};
 // use std::fs::OpenOptions;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs::File, path::Path};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareResponse {
@@ -148,24 +149,32 @@ async fn main() {
     debug!("Group id: {group_identifier}");
 }
 
-async fn get_zone_record_ids_from_cloudflare(
-    token: &str,
-    zone_name: &str,
-    record_name: &str,
-) -> Result<(String, String), reqwest::Error> {
-    debug!("Entered get_zone_record_ids_from_cloudflare");
-    let response = cloudflare_get(
-        token,
-        format!("https://api.cloudflare.com/client/v4/zones?name={zone_name}"),
-    )
-    .await?;
-    let result = response.result.unwrap();
-    let zone_id = result[0]["id"].as_str().unwrap();
-    debug!("get_zone_record_ids_from_cloudflare: Zone id is: {zone_id:#?}");
-    Ok((
-        zone_id.to_owned(),
-        get_record_id_from_cloudflare(zone_id, record_name, token).await?,
-    ))
+async fn cloudflare_get(token: &str, url: String) -> Result<CloudflareResponse, reqwest::Error> {
+    debug!("Entered cloudflare_get");
+    debug!("cloudflare_get: Url is: {url:#?}");
+    let response: CloudflareResponse = reqwest::Client::new()
+        .get(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .send()
+        .await?
+        .json()
+        .await
+        .unwrap();
+    debug!("cloudflare_get: Response is: {:#?}", response);
+    // TODO: Check response validity: Zero length errors, non-zero length response
+    Ok(response)
+}
+
+async fn get_ip() -> Result<String, reqwest::Error> {
+    let mut resp = reqwest::get("https://ipv4.icanhazip.com")
+        .await?
+        .text()
+        .await?;
+    resp.pop();
+    debug!("IP response: {resp:#?}");
+
+    Ok(resp)
 }
 
 async fn get_record_id_from_cloudflare(
@@ -187,21 +196,24 @@ async fn get_record_id_from_cloudflare(
         .to_owned())
 }
 
-async fn cloudflare_get(token: &str, url: String) -> Result<CloudflareResponse, reqwest::Error> {
-    debug!("Entered cloudflare_get");
-    debug!("cloudflare_get: Url is: {url:#?}");
-    let response: CloudflareResponse = reqwest::Client::new()
-        .get(url)
-        .header("Authorization", format!("Bearer {token}"))
-        .header("Content-Type", "application/json")
-        .send()
-        .await?
-        .json()
-        .await
-        .unwrap();
-    debug!("cloudflare_get: Response is: {:#?}", response);
-    // TODO: Check response validity: Zero length errors, non-zero length response
-    Ok(response)
+async fn get_zone_record_ids_from_cloudflare(
+    token: &str,
+    zone_name: &str,
+    record_name: &str,
+) -> Result<(String, String), reqwest::Error> {
+    debug!("Entered get_zone_record_ids_from_cloudflare");
+    let response = cloudflare_get(
+        token,
+        format!("https://api.cloudflare.com/client/v4/zones?name={zone_name}"),
+    )
+    .await?;
+    let result = response.result.unwrap();
+    let zone_id = result[0]["id"].as_str().unwrap();
+    debug!("get_zone_record_ids_from_cloudflare: Zone id is: {zone_id:#?}");
+    Ok((
+        zone_id.to_owned(),
+        get_record_id_from_cloudflare(zone_id, record_name, token).await?,
+    ))
 }
 
 async fn get_group_id_from_cloudflare(
@@ -224,15 +236,4 @@ async fn get_group_id_from_cloudflare(
         .as_str()
         .unwrap()
         .to_owned())
-}
-
-async fn get_ip() -> Result<String, reqwest::Error> {
-    let mut resp = reqwest::get("https://ipv4.icanhazip.com")
-        .await?
-        .text()
-        .await?;
-    resp.pop();
-    debug!("IP response: {resp:#?}");
-
-    Ok(resp)
 }
