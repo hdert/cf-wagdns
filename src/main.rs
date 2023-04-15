@@ -136,8 +136,8 @@ async fn main() {
 
 #[derive(Debug)]
 enum CloudflareError {
-    ReqwestError(reqwest::Error),
-    Unsuccessful(CloudflareResponseError),
+    ReqwestError,
+    Unsuccessful,
     EmptyResponse,
     ParseError,
 }
@@ -149,12 +149,6 @@ impl fmt::Display for CloudflareError {
 }
 
 impl Error for CloudflareError {}
-
-impl From<reqwest::Error> for CloudflareError {
-    fn from(reqwestError: reqwest::Error) -> CloudflareError {
-        CloudflareError::ReqwestError(reqwestError)
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareResponse {
@@ -195,13 +189,17 @@ async fn cloudflare_get(
         .send()
         .await
         .into_report()
-        .change_context(CloudflareError::from())?;
-
-    let response: CloudflareResponse = response
+        .change_context(CloudflareError::ReqwestError)?
         .json()
         .await
         .into_report()
         .change_context(CloudflareError::ParseError)?;
+
+    // let response: CloudflareResponse = response
+    //     .json()
+    //     .await
+    //     .into_report()
+    //     .change_context(CloudflareError::ParseError)?;
     debug!("cloudflare_get: Response is: {:#?}", response);
     // TODO: Check response validity: Zero length errors, non-zero length response
     Ok(parse_result(response)?)
@@ -210,7 +208,10 @@ async fn cloudflare_get(
 fn parse_result(
     response: CloudflareResponse,
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
-    Ok(vec![])
+    match response.result {
+        Some(result) => Ok(result),
+        None => Err(Report::new(CloudflareError::EmptyResponse)),
+    }
 }
 
 async fn get_ip() -> Result<String, reqwest::Error> {
@@ -228,18 +229,18 @@ async fn get_record_id_from_cloudflare(
     zone_id: &str,
     record_name: &str,
     token: &str,
-) -> Result<String, reqwest::Error> {
-    debug!("Entered get_record_id_from_cloudflare");
-    let response = cloudflare_get(
+) -> Result<String, CloudflareError> {
+    // debug!("Entered get_record_id_from_cloudflare");
+    let result = cloudflare_get(
         token,
         format!(
             "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?name={record_name}"
         ),
     )
     .await?;
-    Ok(response.result.unwrap()[0]["id"]
+    Ok(result[0]["id"]
         .as_str()
-        .unwrap()
+        .ok_or_else(|| Report::new(CloudflareError::ParseError))?
         .to_owned())
 }
 
@@ -247,16 +248,15 @@ async fn get_zone_record_ids_from_cloudflare(
     token: &str,
     zone_name: &str,
     record_name: &str,
-) -> Result<(String, String), reqwest::Error> {
-    debug!("Entered get_zone_record_ids_from_cloudflare");
-    let response = cloudflare_get(
+) -> Result<(String, String), CloudflareError> {
+    // debug!("Entered get_zone_record_ids_from_cloudflare");
+    let result = cloudflare_get(
         token,
         format!("https://api.cloudflare.com/client/v4/zones?name={zone_name}"),
     )
     .await?;
-    let result = response.result.unwrap();
     let zone_id = result[0]["id"].as_str().unwrap();
-    debug!("get_zone_record_ids_from_cloudflare: Zone id is: {zone_id:#?}");
+    // debug!("get_zone_record_ids_from_cloudflare: Zone id is: {zone_id:#?}");
     Ok((
         zone_id.to_owned(),
         get_record_id_from_cloudflare(zone_id, record_name, token).await?,
@@ -267,20 +267,28 @@ async fn get_group_id_from_cloudflare(
     token: &str,
     account_id: &str,
     group_name: &str,
-) -> Result<String, reqwest::Error> {
-    debug!("Entered get_group_id_from_cloudflare");
-    let response = cloudflare_get(
+) -> Result<String, CloudflareError> {
+    // debug!("Entered get_group_id_from_cloudflare");
+    let result = cloudflare_get(
         token,
         format!("https://api.cloudflare.com/client/v4/accounts/{account_id}/access/groups"),
     )
     .await?;
-    let result = response.result.unwrap();
-    debug!("{:#?}", result);
-    Ok(result
+    // debug!("{:#?}", result);
+    /* Although we are guaranteed that result is non-zero length by cloudflare_get(), we are not guaranteed
+    that it is non-zero length after we've ran .filter() on it. */
+    let filtered = result
         .iter()
         .filter(|value| value["name"].as_str().unwrap() == group_name)
-        .collect::<Vec<&HashMap<String, Value>>>()[0]["id"]
-        .as_str()
-        .unwrap()
-        .to_owned())
+        .collect::<Vec<&HashMap<String, Value>>>();
+
+    let id = match filtered.len() {
+        1 => match filtered[0]["id"].as_str() {
+            Some(string) => string.to_owned(),
+            None => return Err(Report::new(CloudflareError::ParseError)),
+        },
+        _ => return Err(Report::new(CloudflareError::ParseError)),
+    };
+
+    Ok(id)
 }
