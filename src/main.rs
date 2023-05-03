@@ -2,7 +2,7 @@ use envfile::EnvFile;
 use error_stack::{IntoReport, Report, Result, ResultExt};
 use log::{debug, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use simplelog::*;
 use std::{collections::HashMap, error::Error, fmt, fs::File, path::Path};
 // use std::fs::OpenOptions;
@@ -63,6 +63,9 @@ async fn main() {
 
     let token = env_file.get("TOKEN").unwrap();
     let bypass_token = env_file.get("BYPASS_TOKEN").unwrap();
+    let record_name = config_file
+        .get("RECORD_NAME")
+        .expect("Error: RECORD_NAME not set.");
 
     debug!("Grabbed tokens");
     let (zone_identifier, record_identifier) =
@@ -75,15 +78,9 @@ async fn main() {
                 debug!("Left valid from file");
                 (
                     result_1.to_owned(),
-                    get_record_id_from_cloudflare(
-                        result_1,
-                        config_file
-                            .get("RECORD_NAME")
-                            .expect("Error: RECORD_NAME not set."),
-                        token,
-                    )
-                    .await
-                    .unwrap(),
+                    get_record_id_from_cloudflare(result_1, record_name, token)
+                        .await
+                        .unwrap(),
                 )
             }
             (None, None) | (None, Some(_)) => {
@@ -93,9 +90,7 @@ async fn main() {
                     config_file
                         .get("ZONE_NAME")
                         .expect("Error: ZONE_NAME not set"),
-                    config_file
-                        .get("RECORD_NAME")
-                        .expect("Error: RECORD_NAME not set."),
+                    record_name,
                 )
                 .await
                 .unwrap()
@@ -103,6 +98,10 @@ async fn main() {
         };
     debug!("Zone id: {zone_identifier}");
     debug!("Record id: {record_identifier}");
+
+    let result = cloudflare_put(token, format!("https://api.cloudflare.com/client/v4/zones/{zone_identifier}/dns_records/{record_identifier}"), json!({"id": zone_identifier, "type": "A", "name": record_name, "content": current_ip})).await.unwrap();
+    debug!("Result: {result:#?}");
+
     if config_file
         .get("UPDATE_ACCESS")
         .expect("Error: UPDATE_ACCESS not defined")
@@ -154,9 +153,15 @@ impl Error for CloudflareError {}
 struct CloudflareResponse {
     errors: Vec<CloudflareResponseError>,
     messages: Option<Vec<Value>>,
-    result: Option<Vec<HashMap<String, Value>>>,
+    result: CloudflareResult,
     result_info: Option<HashMap<String, i32>>,
     success: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum CloudflareResult {
+    Vec(Option<Vec<HashMap<String, Value>>>),
+    HashMap(Option<HashMap<String, Value>>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -175,6 +180,34 @@ impl fmt::Display for CloudflareResponseError {
 }
 
 impl Error for CloudflareResponseError {}
+
+async fn cloudflare_put(
+    token: &str,
+    url: String,
+    data: Value,
+) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
+    debug!("Entered cloudflare_put");
+    debug!("cloudflare_put: Url is {url:#?} data is:\n{data:#?}");
+    let body = serde_json::to_string(&data).unwrap();
+    debug!("{body:#?}");
+    let response = reqwest::Client::new()
+        .put(url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .into_report()
+        .change_context(CloudflareError::ReqwestError)?
+        .json()
+        .await
+        .into_report()
+        .change_context(CloudflareError::ParseError)?;
+
+    debug!("cloudflare_put: Response is: {response:#?}");
+
+    parse_result(response)
+}
 
 async fn cloudflare_get(
     token: &str,
@@ -202,15 +235,17 @@ async fn cloudflare_get(
     //     .change_context(CloudflareError::ParseError)?;
     debug!("cloudflare_get: Response is: {:#?}", response);
     // TODO: Check response validity: Zero length errors, non-zero length response
-    Ok(parse_result(response)?)
+    parse_result(response)
 }
 
 fn parse_result(
     response: CloudflareResponse,
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
     match response.result {
-        Some(result) => Ok(result),
-        None => Err(Report::new(CloudflareError::EmptyResponse)),
+        CloudflareResult::Vec(Some(result)) => Ok(result),
+        CloudflareResult::Vec(None) => Err(Report::new(CloudflareError::EmptyResponse)),
+        CloudflareResult::HashMap(Some(result)) => Ok(vec![result]),
+        CloudflareResult::HashMap(None) => Err(Report::new(CloudflareError::EmptyResponse)),
     }
 }
 
@@ -287,7 +322,13 @@ async fn get_group_id_from_cloudflare(
             Some(string) => string.to_owned(),
             None => return Err(Report::new(CloudflareError::ParseError)),
         },
-        _ => return Err(Report::new(CloudflareError::ParseError)),
+        _ => {
+            return Err(
+                Report::new(CloudflareError::Unsuccessful).attach_printable(format!(
+                    "Group name: {group_name} wasn't in in the list of results:\n{result:#?}"
+                )),
+            )
+        }
     };
 
     Ok(id)
