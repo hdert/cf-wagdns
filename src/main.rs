@@ -131,6 +131,43 @@ async fn main() {
     };
     debug!("Account id: {account_identifier}");
     debug!("Group id: {group_identifier}");
+
+    let result = cloudflare_get(
+        bypass_token,
+        format!(
+            "https://api.cloudflare.com/client/v4
+    /accounts/{account_identifier}/access/groups/{group_identifier}"
+        ),
+    )
+    .await
+    .unwrap();
+    debug!("Result: {result:#?}");
+
+    let result = replace_ip_in_result(result, current_ip).unwrap();
+    debug!("Result: {result:#?}");
+
+    // let result = cloudflare_put(
+    //     bypass_token,
+    //     format!(
+    //         "https://api.cloudflare.com/client/v4
+    // /accounts/{account_identifier}/access/groups/{group_identifier}"
+    //     ),
+    //     json!(result),
+    // )
+    // .await
+    // .unwrap();
+    // debug!("Result: {result:#?}");
+}
+
+fn replace_ip_in_result(
+    result: Vec<HashMap<String, Value>>,
+    ip: String,
+) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
+    let mut result = result;
+    result[0]
+        .entry("ip".to_owned())
+        .or_insert(Value::String(ip));
+    Ok(result)
 }
 
 #[derive(Debug)]
@@ -143,7 +180,20 @@ enum CloudflareError {
 
 impl fmt::Display for CloudflareError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str("Error getting data from Cloudflare")
+        match self {
+            CloudflareError::ReqwestError => {
+                fmt.write_str("Error getting data from Cloudflare: Reqwest failure")
+            }
+            CloudflareError::Unsuccessful => {
+                fmt.write_str("Error getting data from Cloudflare: Unsuccessful")
+            }
+            CloudflareError::EmptyResponse => {
+                fmt.write_str("Error getting data from Cloudflare: Empty response")
+            }
+            CloudflareError::ParseError => {
+                fmt.write_str("Error getting data from Cloudflare: Error parsing response")
+            }
+        }
     }
 }
 
@@ -222,11 +272,13 @@ async fn cloudflare_get(
         .send()
         .await
         .into_report()
-        .change_context(CloudflareError::ReqwestError)?
+        .change_context(CloudflareError::ReqwestError)
+        .attach_printable("About to parse for JSON")?
         .json()
         .await
         .into_report()
-        .change_context(CloudflareError::ParseError)?;
+        .change_context(CloudflareError::ParseError)
+        .attach_printable("Failed to parse JSON")?;
 
     // let response: CloudflareResponse = response
     //     .json()
@@ -241,6 +293,7 @@ async fn cloudflare_get(
 fn parse_result(
     response: CloudflareResponse,
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
+    debug!("Parse result: Not finished.");
     match response.result {
         CloudflareResult::Vec(Some(result)) => Ok(result),
         CloudflareResult::Vec(None) => Err(Report::new(CloudflareError::EmptyResponse)),
