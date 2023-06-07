@@ -135,8 +135,7 @@ async fn main() {
     let result = cloudflare_get(
         bypass_token,
         format!(
-            "https://api.cloudflare.com/client/v4
-    /accounts/{account_identifier}/access/groups/{group_identifier}"
+            "https://api.cloudflare.com/client/v4/accounts/{account_identifier}/access/groups/{group_identifier}"
         ),
     )
     .await
@@ -164,11 +163,33 @@ fn replace_ip_in_result(
     ip: String,
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
     let mut result = result;
+    // for group in result {
+    //     for (field, value) in group {
+    //         if ["include", "name", "require"].contains(&field.as_str()) {
+    //             todo!();
+    //         }
+    //     }
+    // }
     result[0]
         .entry("ip".to_owned())
         .or_insert(Value::String(ip));
     Ok(result)
 }
+
+// fn replace_ip_in_ruleset(rules: Value, ip: String) -> Result<Value, CloudflareError> {
+//     let mut rules: Vec<HashMap<String, HashMap<String, String>>> = serde_json::from_value(rules)
+//         .into_report()
+//         .change_context(CloudflareError::ParseError)?;
+
+//     for rule in rules {
+//         if rule.contains_key("ip") {}
+//     }
+//     let rules: Value = serde_json::to_value(rules)
+//         .into_report()
+//         .change_context(CloudflareError::ParseError)?;
+
+//     Ok(rules)
+// }
 
 #[derive(Debug)]
 enum CloudflareError {
@@ -203,15 +224,16 @@ impl Error for CloudflareError {}
 struct CloudflareResponse {
     errors: Vec<CloudflareResponseError>,
     messages: Option<Vec<Value>>,
-    result: CloudflareResult,
+    result: Option<CloudflareResult>,
     result_info: Option<HashMap<String, i32>>,
     success: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
 enum CloudflareResult {
-    Vec(Option<Vec<HashMap<String, Value>>>),
-    HashMap(Option<HashMap<String, Value>>),
+    Vec(Vec<HashMap<String, Value>>),
+    HashMap(HashMap<String, Value>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -295,10 +317,9 @@ fn parse_result(
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
     debug!("Parse result: Not finished.");
     match response.result {
-        CloudflareResult::Vec(Some(result)) => Ok(result),
-        CloudflareResult::Vec(None) => Err(Report::new(CloudflareError::EmptyResponse)),
-        CloudflareResult::HashMap(Some(result)) => Ok(vec![result]),
-        CloudflareResult::HashMap(None) => Err(Report::new(CloudflareError::EmptyResponse)),
+        Some(CloudflareResult::Vec(result)) => Ok(result),
+        Some(CloudflareResult::HashMap(result)) => Ok(vec![result]),
+        None => Err(Report::new(CloudflareError::EmptyResponse)),
     }
 }
 
