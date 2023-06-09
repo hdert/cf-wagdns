@@ -157,16 +157,17 @@ async fn main() {
     debug!("Result: {result:#?}");
 }
 
+type Rules = Vec<HashMap<String, HashMap<String, String>>>;
+
 fn replace_ip_in_result(
     result: Vec<HashMap<String, Value>>,
     ip: String,
 ) -> Result<HashMap<String, Value>, CloudflareError> {
-    let mut response: HashMap<String, Vec<HashMap<String, HashMap<String, String>>>> =
-        HashMap::new();
+    let mut response: HashMap<String, Rules> = HashMap::new();
 
     for value in ["include", "require", "exclude"] {
         if result[0].contains_key(value) {
-            let mut rules: Vec<HashMap<String, HashMap<String, String>>> = serde_json::from_value(
+            let mut rules: Rules = serde_json::from_value(
                 result[0]
                     .get(value)
                     .ok_or_else(|| Report::new(CloudflareError::ParseError))?
