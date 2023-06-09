@@ -145,51 +145,82 @@ async fn main() {
     let result = replace_ip_in_result(result, current_ip).unwrap();
     debug!("Result: {result:#?}");
 
-    // let result = cloudflare_put(
-    //     bypass_token,
-    //     format!(
-    //         "https://api.cloudflare.com/client/v4
-    // /accounts/{account_identifier}/access/groups/{group_identifier}"
-    //     ),
-    //     json!(result),
-    // )
-    // .await
-    // .unwrap();
-    // debug!("Result: {result:#?}");
+    let result = cloudflare_put(
+        bypass_token,
+        format!(
+            "https://api.cloudflare.com/client/v4/accounts/{account_identifier}/access/groups/{group_identifier}"
+        ),
+        json!(result),
+    )
+    .await
+    .unwrap();
+    debug!("Result: {result:#?}");
 }
 
 fn replace_ip_in_result(
     result: Vec<HashMap<String, Value>>,
     ip: String,
-) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
-    let mut result = result;
-    // for group in result {
-    //     for (field, value) in group {
-    //         if ["include", "name", "require"].contains(&field.as_str()) {
-    //             todo!();
-    //         }
-    //     }
-    // }
-    result[0]
-        .entry("ip".to_owned())
-        .or_insert(Value::String(ip));
-    Ok(result)
+) -> Result<HashMap<String, Value>, CloudflareError> {
+    let mut response: HashMap<String, Vec<HashMap<String, HashMap<String, String>>>> =
+        HashMap::new();
+
+    for value in ["include", "require", "exclude"] {
+        if result[0].contains_key(value) {
+            let mut rules: Vec<HashMap<String, HashMap<String, String>>> = serde_json::from_value(
+                result[0]
+                    .get(value)
+                    .ok_or_else(|| Report::new(CloudflareError::ParseError))?
+                    .to_owned(),
+            )
+            .into_report()
+            .change_context(CloudflareError::ParseError)?;
+
+            if ["include", "require"].contains(&value) {
+                debug!("Does contain {value}");
+                for rule in &mut rules {
+                    if rule.contains_key("ip") {
+                        rule.insert(
+                            "ip".to_owned(),
+                            HashMap::from([("ip".to_owned(), ip.clone())]),
+                        );
+                        debug!("Did a replacement");
+                    }
+                }
+            }
+
+            response.insert(value.to_owned(), rules);
+        }
+    }
+
+    debug!("{:#?}", response);
+
+    let mut response: HashMap<String, Value> = serde_json::from_value(
+        serde_json::to_value(response)
+            .into_report()
+            .change_context(CloudflareError::Unsuccessful)?,
+    )
+    .into_report()
+    .change_context(CloudflareError::Unsuccessful)?;
+
+    response.insert(
+        "name".to_owned(),
+        result[0]
+            .get("name")
+            .ok_or_else(|| Report::new(CloudflareError::Unsuccessful))?
+            .to_owned(),
+    );
+
+    debug!("{:#?}", response);
+
+    debug!(
+        "{:#?}",
+        serde_json::to_string(&response)
+            .into_report()
+            .change_context(CloudflareError::Unsuccessful)?
+    );
+
+    Ok(response)
 }
-
-// fn replace_ip_in_ruleset(rules: Value, ip: String) -> Result<Value, CloudflareError> {
-//     let mut rules: Vec<HashMap<String, HashMap<String, String>>> = serde_json::from_value(rules)
-//         .into_report()
-//         .change_context(CloudflareError::ParseError)?;
-
-//     for rule in rules {
-//         if rule.contains_key("ip") {}
-//     }
-//     let rules: Value = serde_json::to_value(rules)
-//         .into_report()
-//         .change_context(CloudflareError::ParseError)?;
-
-//     Ok(rules)
-// }
 
 #[derive(Debug)]
 enum CloudflareError {
