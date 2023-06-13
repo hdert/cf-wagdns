@@ -1,2 +1,1 @@
-# Cloudflare-ddns
-Yet another cloudflare-ddns script, this time with the ability to update Cloudflare Access Groups as well!
+A simple cloudflare ddns updater script, with helpful error messages and simple configuration, and the ability to update Access Group rules as well.
