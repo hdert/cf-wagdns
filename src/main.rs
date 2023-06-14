@@ -158,6 +158,7 @@ async fn main() {
 
     env_file.update("ZONE_ID", &zone_identifier);
     env_file.update("RECORD_ID", &record_identifier);
+    env_file.update("GROUP_ID", &group_identifier);
     match env_file.write() {
         Ok(_) => (),
         Err(err) => warn!("Failed to update zone_id and record_id in .env:\n{err}"),
