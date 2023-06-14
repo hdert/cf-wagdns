@@ -42,7 +42,7 @@ async fn main() {
 
     match env_file.get("IP_ADDRESS") {
         Some(result) => {
-            if *result == current_ip {
+            if result == current_ip {
                 info!("IP unchanged");
                 // return;
                 warn!("Return statement removed, normal return would be here!")
@@ -53,7 +53,7 @@ async fn main() {
             }
         }
         None => {
-            warn!("Historical IP not set");
+            warn!("Historical IP not set, this should not be a problem if this your first time running this program.");
             env_file.update("IP_ADDRESS", &current_ip);
             env_file.write().unwrap();
             info!("Set env file ip to {current_ip}")
@@ -155,6 +155,13 @@ async fn main() {
     .await
     .unwrap();
     debug!("Result: {result:#?}");
+
+    env_file.update("ZONE_ID", &zone_identifier);
+    env_file.update("RECORD_ID", &record_identifier);
+    match env_file.write() {
+        Ok(_) => (),
+        Err(err) => warn!("Failed to update zone_id and record_id in .env:\n{err}"),
+    }
 }
 
 type Rules = Vec<HashMap<String, HashMap<String, String>>>;
