@@ -3,7 +3,7 @@ use error_stack::{IntoReport, Report, Result, ResultExt};
 use log::{debug, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use simplelog::*;
+use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
 use std::{collections::HashMap, error::Error, fmt, fs::File, path::Path};
 // use std::fs::OpenOptions;
 
@@ -40,25 +40,22 @@ async fn main() {
     let current_ip = get_ip().await.unwrap();
     debug!("{current_ip}");
 
-    match env_file.get("IP_ADDRESS") {
-        Some(result) => {
-            if result == current_ip {
-                info!("IP unchanged");
-                // return;
-                warn!("Return statement removed, normal return would be here!")
-            } else {
-                env_file.update("IP_ADDRESS", &current_ip);
-                env_file.write().unwrap();
-                info!("Updated env file ip to {current_ip}");
-            }
-        }
-        None => {
-            warn!("Historical IP not set, this should not be a problem if this your first time running this program.");
+    if let Some(result) = env_file.get("IP_ADDRESS") {
+        if result == current_ip {
+            info!("IP unchanged");
+            // return;
+            warn!("Return statement removed, normal return would be here!");
+        } else {
             env_file.update("IP_ADDRESS", &current_ip);
             env_file.write().unwrap();
-            info!("Set env file ip to {current_ip}")
+            info!("Updated env file ip to {current_ip}");
         }
-    };
+    } else {
+        warn!("Historical IP not set, this should not be a problem if this your first time running this program.");
+        env_file.update("IP_ADDRESS", &current_ip);
+        env_file.write().unwrap();
+        info!("Set env file ip to {current_ip}");
+    }
     debug!("Guard clause over");
 
     let token = env_file.get("TOKEN").unwrap();
@@ -83,7 +80,7 @@ async fn main() {
                         .unwrap(),
                 )
             }
-            (None, None) | (None, Some(_)) => {
+            (None, None | Some(_)) => {
                 debug!("None valid");
                 get_zone_record_ids_from_cloudflare(
                     token,
@@ -111,23 +108,20 @@ async fn main() {
     }
 
     let account_identifier = env_file.get("ACCOUNT_ID").expect("Error: No account ID");
-    let group_identifier = match env_file.get("GROUP_ID") {
-        Some(result) => {
-            debug!("From file was valid");
-            result.to_owned()
-        }
-        None => {
-            debug!("None valid");
-            get_group_id_from_cloudflare(
-                bypass_token,
-                account_identifier,
-                config_file
-                    .get("GROUP_NAME")
-                    .expect("Error: GROUP_NAME not set"),
-            )
-            .await
-            .unwrap()
-        }
+    let group_identifier = if let Some(result) = env_file.get("GROUP_ID") {
+        debug!("From file was valid");
+        result.to_owned()
+    } else {
+        debug!("None valid");
+        get_group_id_from_cloudflare(
+            bypass_token,
+            account_identifier,
+            config_file
+                .get("GROUP_NAME")
+                .expect("Error: GROUP_NAME not set"),
+        )
+        .await
+        .unwrap()
     };
     debug!("Account id: {account_identifier}");
     debug!("Group id: {group_identifier}");
@@ -142,7 +136,7 @@ async fn main() {
     .unwrap();
     debug!("Result: {result:#?}");
 
-    let result = replace_ip_in_result(result, current_ip).unwrap();
+    let result = replace_ip_in_result(&result, &current_ip).unwrap();
     debug!("Result: {result:#?}");
 
     let result = cloudflare_put(
@@ -168,8 +162,8 @@ async fn main() {
 type Rules = Vec<HashMap<String, HashMap<String, String>>>;
 
 fn replace_ip_in_result(
-    result: Vec<HashMap<String, Value>>,
-    ip: String,
+    result: &[HashMap<String, Value>],
+    ip: &str,
 ) -> Result<HashMap<String, Value>, CloudflareError> {
     let mut response: HashMap<String, Rules> = HashMap::new();
 
@@ -179,7 +173,7 @@ fn replace_ip_in_result(
                 result[0]
                     .get(value)
                     .ok_or_else(|| Report::new(CloudflareError::ParseError))?
-                    .to_owned(),
+                    .clone(),
             )
             .into_report()
             .change_context(CloudflareError::ParseError)?;
@@ -190,7 +184,7 @@ fn replace_ip_in_result(
                     if rule.contains_key("ip") {
                         rule.insert(
                             "ip".to_owned(),
-                            HashMap::from([("ip".to_owned(), ip.clone())]),
+                            HashMap::from([("ip".to_owned(), ip.to_string())]),
                         );
                         debug!("Did a replacement");
                     }
@@ -216,7 +210,7 @@ fn replace_ip_in_result(
         result[0]
             .get("name")
             .ok_or_else(|| Report::new(CloudflareError::Unsuccessful))?
-            .to_owned(),
+            .clone(),
     );
 
     debug!("{:#?}", response);
@@ -242,16 +236,14 @@ enum CloudflareError {
 impl fmt::Display for CloudflareError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CloudflareError::ReqwestError => {
+            Self::ReqwestError => {
                 fmt.write_str("Error getting data from Cloudflare: Reqwest failure")
             }
-            CloudflareError::Unsuccessful => {
-                fmt.write_str("Error getting data from Cloudflare: Unsuccessful")
-            }
-            CloudflareError::EmptyResponse => {
+            Self::Unsuccessful => fmt.write_str("Error getting data from Cloudflare: Unsuccessful"),
+            Self::EmptyResponse => {
                 fmt.write_str("Error getting data from Cloudflare: Empty response")
             }
-            CloudflareError::ParseError => {
+            Self::ParseError => {
                 fmt.write_str("Error getting data from Cloudflare: Error parsing response")
             }
         }
