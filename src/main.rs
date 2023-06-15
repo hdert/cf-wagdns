@@ -1,3 +1,6 @@
+//! A simple cloudflare ddns updater script, with helpful error messages and simple configuration,
+//! and the ability to update Access Group rules.
+
 use envfile::EnvFile;
 use error_stack::{IntoReport, Report, Result, ResultExt};
 use log::{debug, info, warn, LevelFilter};
@@ -36,6 +39,7 @@ async fn main() {
     ])
     .expect("Error: was not able to create logger instance");
     debug!("Program has started");
+    warn!("Still logging instead of append logging!");
 
     let current_ip = get_ip().await.unwrap();
     debug!("{current_ip}");
@@ -159,6 +163,7 @@ async fn main() {
     }
 }
 
+/// Simple type to describe Access Group rules.
 type Rules = Vec<HashMap<String, HashMap<String, String>>>;
 
 fn replace_ip_in_result(
@@ -225,6 +230,7 @@ fn replace_ip_in_result(
     Ok(response)
 }
 
+/// Internal enum to describe the type of error that has occured.
 #[derive(Debug)]
 enum CloudflareError {
     ReqwestError,
@@ -233,6 +239,7 @@ enum CloudflareError {
     ParseError,
 }
 
+/// Make printing the error type prettier
 impl fmt::Display for CloudflareError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -252,6 +259,7 @@ impl fmt::Display for CloudflareError {
 
 impl Error for CloudflareError {}
 
+/// Internal struct to describe a cloudflare response
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareResponse {
     errors: Vec<CloudflareResponseError>,
@@ -261,6 +269,8 @@ struct CloudflareResponse {
     success: bool,
 }
 
+/// Enum to describe result types, as cloudflare can return either a JSON array
+/// or a JSON object in the result, which maps to rust's vectors and hashmaps respectively.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum CloudflareResult {
@@ -268,12 +278,14 @@ enum CloudflareResult {
     HashMap(HashMap<String, Value>),
 }
 
+/// Nice self contained type to describe an error.
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudflareResponseError {
     code: i32,
     message: String,
 }
 
+/// Make printing the error from cloudflare prettier.
 impl fmt::Display for CloudflareResponseError {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&format!(
@@ -285,6 +297,7 @@ impl fmt::Display for CloudflareResponseError {
 
 impl Error for CloudflareResponseError {}
 
+/// Make a put request to the url in url with the token and data given and parse the response.
 async fn cloudflare_put(
     token: &str,
     url: String,
@@ -313,6 +326,7 @@ async fn cloudflare_put(
     parse_result(response)
 }
 
+/// Make a get request to the url given with the token given and parse the response.
 async fn cloudflare_get(
     token: &str,
     url: String,
@@ -344,6 +358,7 @@ async fn cloudflare_get(
     parse_result(response)
 }
 
+/// Parse the result from cloudflare_put and get, do some basic sanity checks like for the length of the result.
 fn parse_result(
     response: CloudflareResponse,
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
@@ -355,6 +370,7 @@ fn parse_result(
     }
 }
 
+/// Get the ip from icanhazip.
 async fn get_ip() -> Result<String, reqwest::Error> {
     let mut resp = reqwest::get("https://ipv4.icanhazip.com")
         .await?
@@ -366,6 +382,7 @@ async fn get_ip() -> Result<String, reqwest::Error> {
     Ok(resp)
 }
 
+/// Get the record id from cloudflare given the record name.
 async fn get_record_id_from_cloudflare(
     zone_id: &str,
     record_name: &str,
@@ -385,6 +402,7 @@ async fn get_record_id_from_cloudflare(
         .to_owned())
 }
 
+/// Get the zone and record ids from cloudflare given the zone and record names.
 async fn get_zone_record_ids_from_cloudflare(
     token: &str,
     zone_name: &str,
@@ -404,6 +422,7 @@ async fn get_zone_record_ids_from_cloudflare(
     ))
 }
 
+/// Get the group id from cloudflare.
 async fn get_group_id_from_cloudflare(
     token: &str,
     account_id: &str,
