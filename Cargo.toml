@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/hdert/cf-wagdns"
+homepage = "https://github.com/hdert/cf-wagdns"
 readme = "README.md"
 description = "A simple cloudflare ddns updater script, with helpful error messages and simple configuration, and the ability to update Access Group rules."
+authors = ["Justin Muirhead <justintmqwerty at gmail dot com>"]
+publish = false
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
