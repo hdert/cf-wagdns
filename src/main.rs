@@ -358,7 +358,7 @@ async fn cloudflare_get(
     parse_result(response)
 }
 
-/// Parse the result from cloudflare_put and get, do some basic sanity checks like for the length of the result.
+/// Parse the result from `cloudflare_put` and get, do some basic sanity checks like for the length of the result.
 fn parse_result(
     response: CloudflareResponse,
 ) -> Result<Vec<HashMap<String, Value>>, CloudflareError> {
