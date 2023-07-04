@@ -1,4 +1,4 @@
-//! A simple cloudflare ddns updater script, with helpful error messages and simple configuration,
+//! A simple Cloudflare dns record updater script, with helpful error messages and simple configuration,
 //! and the ability to update Access Group rules.
 
 use envfile::EnvFile;
@@ -13,8 +13,8 @@ use std::{collections::HashMap, error::Error, fmt, fs::File, path::Path};
 #[tokio::main]
 async fn main() {
     let mut env_file = EnvFile::new(Path::new(".env")).expect("Error: No .env file");
-    let config_file = EnvFile::new(Path::new("cloudflare-ddns.config"))
-        .expect("Error: no cloudflare-ddns.config file");
+    let config_file =
+        EnvFile::new(Path::new("cf-wagdns.config")).expect("Error: no cf-wagdns.config file");
     CombinedLogger::init(vec![
         TermLogger::new(
             LevelFilter::Warn,
@@ -28,7 +28,7 @@ async fn main() {
             File::create(
                 config_file
                     .get("LOG_FILE")
-                    .expect("Error: LOG_FILE not defined in cloudflare-ddns.config"),
+                    .expect("Error: LOG_FILE not defined in cf-wagdns.config"),
             )
             .expect("Error: Was not able to create log file"),
             // OpenOptions::new()

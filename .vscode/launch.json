@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'cloudflare-ddns'",
+            "name": "Debug executable 'cf-wagdns'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=cloudflare-ddns",
-                    "--package=cloudflare-ddns"
+                    "--bin=cf-wagdns",
+                    "--package=cf-wagdns"
                 ],
                 "filter": {
-                    "name": "cloudflare-ddns",
+                    "name": "cf-wagdns",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'cloudflare-ddns'",
+            "name": "Debug unit tests in executable 'cf-wagdns'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=cloudflare-ddns",
-                    "--package=cloudflare-ddns"
+                    "--bin=cf-wagdns",
+                    "--package=cf-wagdns"
                 ],
                 "filter": {
-                    "name": "cloudflare-ddns",
+                    "name": "cf-wagdns",
                     "kind": "bin"
                 }
             },
