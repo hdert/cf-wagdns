@@ -20,5 +20,5 @@ envfile = "0.2"
 serde_json = "1.0"
 simplelog = "0.12"
 serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.27", features = ["full"] }
-error-stack = "0.3"
+tokio = { version = "1.32", features = ["full"] }
+error-stack = "0.4"

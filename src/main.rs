@@ -7,8 +7,9 @@ use log::{debug, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
-use std::{collections::HashMap, error::Error, fmt, fs::File, path::Path};
-// use std::fs::OpenOptions;
+use std::fs::OpenOptions;
+use std::{collections::HashMap, error::Error, fmt, path::Path};
+// use std::fs::File;
 
 #[tokio::main]
 async fn main() {
@@ -25,16 +26,20 @@ async fn main() {
         WriteLogger::new(
             LevelFilter::Debug,
             Config::default(),
-            File::create(
-                config_file
-                    .get("LOG_FILE")
-                    .expect("Error: LOG_FILE not defined in cf-wagdns.config"),
-            )
-            .expect("Error: Was not able to create log file"),
-            // OpenOptions::new()
-            // .append(true)
-            // .open(config_file.get("LOG_FILE").unwrap())
-            // .unwrap(),
+            // File::create(
+            //     config_file
+            //         .get("LOG_FILE")
+            //         .expect("Error: LOG_FILE not defined in cf-wagdns.config"),
+            // )
+            // .expect("Error: Was not able to create log file."),
+            OpenOptions::new()
+                .append(true)
+                .open(
+                    config_file
+                        .get("LOG_FILE")
+                        .expect("Error: LOG_FILE not defined in cf-wagdns.config"),
+                )
+                .expect("Error: Was not able to create log file."),
         ), // TODO: Change to append(true) once program is in production
     ])
     .expect("Error: was not able to create logger instance");

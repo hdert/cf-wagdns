@@ -1,6 +1,7 @@
 {
   "python.formatting.provider": "autopep8",
   "cSpell.words": [
-    "envfile"
+    "envfile",
+    "wagdns"
   ]
 }
