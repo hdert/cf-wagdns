@@ -2,12 +2,12 @@
 //! and the ability to update Access Group rules.
 
 use envfile::EnvFile;
-use error_stack::{IntoReport, Report, Result, ResultExt};
+use error_stack::{Report, Result, ResultExt};
 use log::{debug, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::{collections::HashMap, error::Error, fmt, path::Path};
 // use std::fs::File;
 
@@ -16,6 +16,17 @@ async fn main() {
     let mut env_file = EnvFile::new(Path::new(".env")).expect("Error: No .env file");
     let config_file =
         EnvFile::new(Path::new("cf-wagdns.config")).expect("Error: no cf-wagdns.config file");
+    let log_file_path = config_file
+        .get("LOG_FILE")
+        .expect("Error: LOG_FILE not defined in cf-wagdns.config");
+    let log_file = match OpenOptions::new().append(true).open(log_file_path) {
+        Ok(file) => file,
+        Err(_) => {
+            File::create(log_file_path)
+                .expect(&format!("Couldn't create a log file at {log_file_path}"));
+            OpenOptions::new().append(true).open(log_file_path).unwrap()
+        }
+    };
     CombinedLogger::init(vec![
         TermLogger::new(
             LevelFilter::Warn,
@@ -32,19 +43,12 @@ async fn main() {
             //         .expect("Error: LOG_FILE not defined in cf-wagdns.config"),
             // )
             // .expect("Error: Was not able to create log file."),
-            OpenOptions::new()
-                .append(true)
-                .open(
-                    config_file
-                        .get("LOG_FILE")
-                        .expect("Error: LOG_FILE not defined in cf-wagdns.config"),
-                )
-                .expect("Error: Was not able to create log file."),
+            log_file,
         ), // TODO: Change to append(true) once program is in production
     ])
     .expect("Error: was not able to create logger instance");
     debug!("Program has started");
-    warn!("Still logging instead of append logging!");
+    // warn!("Still logging instead of append logging!");
 
     let current_ip = get_ip().await.unwrap();
     debug!("{current_ip}");
@@ -52,8 +56,8 @@ async fn main() {
     if let Some(result) = env_file.get("IP_ADDRESS") {
         if result == current_ip {
             info!("IP unchanged");
-            // return;
-            warn!("Return statement removed, normal return would be here!");
+            return;
+            // warn!("Return statement removed, normal return would be here!");
         } else {
             env_file.update("IP_ADDRESS", &current_ip);
             env_file.write().unwrap();
@@ -185,7 +189,6 @@ fn replace_ip_in_result(
                     .ok_or_else(|| Report::new(CloudflareError::ParseError))?
                     .clone(),
             )
-            .into_report()
             .change_context(CloudflareError::ParseError)?;
 
             if ["include", "require"].contains(&value) {
@@ -208,11 +211,8 @@ fn replace_ip_in_result(
     debug!("{:#?}", response);
 
     let mut response: HashMap<String, Value> = serde_json::from_value(
-        serde_json::to_value(response)
-            .into_report()
-            .change_context(CloudflareError::Unsuccessful)?,
+        serde_json::to_value(response).change_context(CloudflareError::Unsuccessful)?,
     )
-    .into_report()
     .change_context(CloudflareError::Unsuccessful)?;
 
     response.insert(
@@ -227,9 +227,7 @@ fn replace_ip_in_result(
 
     debug!(
         "{:#?}",
-        serde_json::to_string(&response)
-            .into_report()
-            .change_context(CloudflareError::Unsuccessful)?
+        serde_json::to_string(&response).change_context(CloudflareError::Unsuccessful)?
     );
 
     Ok(response)
@@ -319,11 +317,9 @@ async fn cloudflare_put(
         .body(body)
         .send()
         .await
-        .into_report()
         .change_context(CloudflareError::ReqwestError)?
         .json()
         .await
-        .into_report()
         .change_context(CloudflareError::ParseError)?;
 
     debug!("cloudflare_put: Response is: {response:#?}");
@@ -344,12 +340,10 @@ async fn cloudflare_get(
         .header("Content-Type", "application/json")
         .send()
         .await
-        .into_report()
         .change_context(CloudflareError::ReqwestError)
         .attach_printable("About to parse for JSON")?
         .json()
         .await
-        .into_report()
         .change_context(CloudflareError::ParseError)
         .attach_printable("Failed to parse JSON")?;
 
