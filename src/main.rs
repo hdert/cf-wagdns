@@ -6,7 +6,9 @@ use error_stack::{Report, Result, ResultExt};
 use log::{debug, info, warn, LevelFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use simplelog::{ColorChoice, CombinedLogger, Config, TermLogger, TerminalMode, WriteLogger};
+use simplelog::{
+    ColorChoice, CombinedLogger, ConfigBuilder, TermLogger, TerminalMode, WriteLogger,
+};
 use std::fs::{File, OpenOptions};
 use std::{collections::HashMap, error::Error, fmt, path::Path};
 // use std::fs::File;
@@ -27,16 +29,17 @@ async fn main() {
             OpenOptions::new().append(true).open(log_file_path).unwrap()
         }
     };
+    let log_config = ConfigBuilder::new().set_time_format_rfc2822().build();
     CombinedLogger::init(vec![
         TermLogger::new(
             LevelFilter::Warn,
-            Config::default(),
+            log_config.clone(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
         WriteLogger::new(
             LevelFilter::Debug,
-            Config::default(),
+            log_config,
             // File::create(
             //     config_file
             //         .get("LOG_FILE")
@@ -110,6 +113,7 @@ async fn main() {
     debug!("Record id: {record_identifier}");
 
     let result = cloudflare_put(token, format!("https://api.cloudflare.com/client/v4/zones/{zone_identifier}/dns_records/{record_identifier}"), json!({"id": zone_identifier, "type": "A", "name": record_name, "content": current_ip})).await.unwrap();
+    info!("Update IP to: {current_ip}");
     debug!("Result: {result:#?}");
 
     if config_file
@@ -161,6 +165,7 @@ async fn main() {
     )
     .await
     .unwrap();
+    info!("Update Cloudflare Access IP to: {current_ip}");
     debug!("Result: {result:#?}");
 
     env_file.update("ZONE_ID", &zone_identifier);
