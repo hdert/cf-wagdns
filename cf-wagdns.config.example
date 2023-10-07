@@ -1,6 +1,6 @@
 ZONE_NAME=<Website address>
 RECORD_NAME=<Website address with subdomain>
-LOG_FILE=cloudflare-ddns.log
+LOG_FILE=cf-wagdns.log
 ACCOUNT_NAME=<Account name>
 GROUP_NAME=<Access Group name>
 UPDATE_ACCESS=<true|false>
